@@ -877,59 +877,79 @@ async function createTicket(interaction, category) {
 // SESSION PANEL
 // ======================================================
 
+
 async function sessionPanel(channel) {
     let server = null;
 
-    if (erlcClient) {
-        try {
+    try {
+        if (erlcClient) {
             server = await erlcClient.server.get({
                 include: ["players", "staff", "queue"],
             });
-        } catch (error) {
-            console.error("Session panel ER:LC error:", error.message);
         }
+    } catch (error) {
+        console.error("Session panel ERLC update:", error.message);
     }
+
+    const count = (...keys) => {
+        for (const key of keys) {
+            const value = server?.[key];
+            if (Array.isArray(value)) return value.length;
+            if (typeof value === "number") return value;
+        }
+        return 0;
+    };
+
+    data.sessionNotifications ||= [];
 
     const active = Boolean(data.session?.active);
     const players = server?.CurrentPlayers ?? 0;
     const maxPlayers = server?.MaxPlayers ?? 0;
-    const queue = getArrayCount(server, "Queue", "queue");
-    const staff = getArrayCount(server, "Staff", "staff");
+    const queue = count("Queue", "queue");
+    const staff = count("Staff", "staff");
 
     const container = new ContainerBuilder()
         .setAccentColor(0x49B9F5);
 
-    addBanner(
-        container,
-        CONFIG.sessionBanner || CONFIG.banner
-    );
+    // MAIN BANNER
+    const sessionBanner =
+        process.env.SESSION_BANNER_URL || CONFIG.banner;
 
+    if (sessionBanner) {
+        container.addMediaGalleryComponents(
+            new MediaGalleryBuilder().addItems(
+                new MediaGalleryItemBuilder()
+                    .setURL(sessionBanner)
+            )
+        );
+    }
+
+    // TITLE AND SERVER INFORMATION
     container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `## 🗄️ Los Angeles Sessions\n` +
-            "Join our community for organized, staff-led roleplay. " +
-            "Review the server regulations and follow staff instructions.\n\n" +
-            `**Server:** ${CONFIG.erlcServerName}\n` +
-            `**Code:** ${CONFIG.erlcServerCode}\n` +
-            `**Owner:** ${CONFIG.serverOwner}\n\n` +
-            (
-                active
-                    ? "🟢 **A session is currently running.**"
-                    : "❌ **No session is currently running.**"
-            )
+            `## Los Angeles Sessions\n` +
+            "Join our community for organized, staff-led roleplay. Review the server regulations and follow staff instructions.\n\n" +
+            `**Server:** ${process.env.ERLC_SERVER_NAME || "Los Angeles Roleplay | Strict | Realistic"}\n` +
+            `**Code:** ${process.env.ERLC_SERVER_CODE || "Not configured"}\n` +
+            `**Owner:** ${process.env.SERVER_OWNER || "Not configured"}\n\n` +
+            `${active
+                ? "**A session is currently running.** Join the server and follow staff instructions."
+                : "**No session is currently running.** Enable notifications to hear when our next session opens."
+            }`
         )
     );
 
     container.addSeparatorComponents(new SeparatorBuilder());
 
+    // PLAYER STATISTICS
     container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            "**Players**\n" +
-            "Players currently in-game\n\n" +
-            "**Queue**\n" +
-            "Players waiting to join\n\n" +
-            "**Staff**\n" +
-            "Staff currently moderating in-game"
+            `**Players**\n` +
+            `Players currently in-game\n\n` +
+            `**Queue**\n` +
+            `Players waiting to join\n\n` +
+            `**Staff**\n` +
+            `Staff currently moderating in-game`
         )
     );
 
@@ -937,21 +957,18 @@ async function sessionPanel(channel) {
         new ButtonBuilder()
             .setCustomId("session_players")
             .setLabel(`${players} / ${maxPlayers}`)
-            .setEmoji("👤")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
 
         new ButtonBuilder()
             .setCustomId("session_queue")
             .setLabel(String(queue))
-            .setEmoji("📋")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
 
         new ButtonBuilder()
             .setCustomId("session_staff")
             .setLabel(String(staff))
-            .setEmoji("🛡️")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true)
     );
@@ -959,43 +976,53 @@ async function sessionPanel(channel) {
     container.addActionRowComponents(stats);
     container.addSeparatorComponents(new SeparatorBuilder());
 
+    // SESSION BUTTONS
     const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId("session_offline")
-            .setLabel(active ? "Session Online" : "Offline")
-            .setEmoji(active ? "🟢" : "❌")
+            .setLabel(active ? "Online" : "Offline")
             .setStyle(active ? ButtonStyle.Success : ButtonStyle.Danger)
             .setDisabled(true),
 
         new ButtonBuilder()
             .setCustomId("session_start")
             .setLabel("Start a session")
-            .setEmoji("🚀")
             .setStyle(ButtonStyle.Primary)
             .setDisabled(active),
 
         new ButtonBuilder()
             .setCustomId("session_notify")
             .setLabel("Notify me for Sessions")
-            .setEmoji("📢")
             .setStyle(ButtonStyle.Secondary)
     );
 
     container.addActionRowComponents(buttons);
 
+    // LAST UPDATED
     container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
             `Last updated ${timestamp()}`
         )
     );
 
-    addBanner(container, CONFIG.footerBanner);
+    // FOOTER BANNER
+    const footerBanner = process.env.FOOTER_BANNER_URL;
 
-    return channel.send({
+    if (footerBanner) {
+        container.addMediaGalleryComponents(
+            new MediaGalleryBuilder().addItems(
+                new MediaGalleryItemBuilder()
+                    .setURL(footerBanner)
+            )
+        );
+    }
+
+    await channel.send({
         components: [container],
         flags: MessageFlags.IsComponentsV2,
     });
 }
+
 
 // ======================================================
 // SESSION ACTIONS
